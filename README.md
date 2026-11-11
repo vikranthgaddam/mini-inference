@@ -17,22 +17,66 @@ Most developers assume building an AI coding assistant is just calling `openai.c
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Architecture (v1.0.0)
 
 ```mermaid
 flowchart TD
-    UserPrompt[User Prompt] --> Assembler[Context Assembler & Memory Manager]
-    Assembler --> Compactor[Context Compactor & KV Cache]
-    Compactor --> Provider[Provider Gateway: Anthropic / OpenAI / Mock]
-    Provider --> Demuxer[Streaming Token Demuxer]
-    Demuxer -->|Thought Stream| UI_Thought[Pink Terminal Stream]
-    Demuxer -->|Markdown Stream| UI_Text[Main Terminal Output]
-    Demuxer -->|Tool JSON Chunks| Repair[Auto-Repair JSON Parser]
-    Repair --> Breaker{Circuit Breaker Check}
-    Breaker -->|Loop Detected| Warning[Inject Recovery Instruction]
-    Breaker -->|Safe| ToolExec[Local Tool Execution: Disk / Shell / PTY]
-    ToolExec --> ResultFeed[Tool Observation Feedback]
-    ResultFeed --> Assembler
+    %% Header / Version
+    subgraph Header ["Mini-Inference Engine (v1.0.0)"]
+        Version["Release: v1.0.0 | Runtime: Bun + TypeScript"]
+    end
+
+    %% Client & User Input
+    subgraph ClientLayer ["1. Presentation & CLI Layer"]
+        User["User Instruction / Task"] --> CLI["CLI Runner (src/index.ts)"]
+    end
+
+    %% Core Engine
+    subgraph EngineLayer ["2. Orchestration & State Machine"]
+        CLI --> Engine["InferenceEngine (src/engine.ts)"]
+        Engine <--> Messages[("Message History & Pinned Context")]
+    end
+
+    %% Memory & Optimization
+    subgraph MemoryLayer ["3. Context & Optimization"]
+        Engine --> Compactor["ContextCompactor (src/compactor.ts)"]
+        Compactor -->|"Prunes Old Tool Outputs & Folds History"| Messages
+        Compactor --> KVCache["KV-Cache / Prompt Caching (69%+ Hits)"]
+    end
+
+    %% Inference & Streaming
+    subgraph InferenceLayer ["4. Inference & Demuxing Layer"]
+        Engine --> Provider["ProviderAdapter (src/providers.ts)"]
+        Provider -->|"Raw Streamed Token Chunks"| Demuxer["TokenDemuxer (src/demuxer.ts)"]
+        
+        Demuxer -->|"Thought Tokens"| UI_Thought["Pink Stream: Extended Reasoning"]
+        Demuxer -->|"Assistant Markdown"| UI_Text["Main Stream: Conversational Text"]
+        Demuxer -->|"Tool Call Chunks"| ToolBuffer["Tool Buffer & Prefix Parser"]
+    end
+
+    %% Tool Safety & Parsing
+    subgraph SafetyLayer ["5. Tool Parsing & Safety Guardrails"]
+        ToolBuffer --> JSONRepair["Auto-Repair JSON Parser (src/json-repair.ts)"]
+        JSONRepair -->|"Heals Trailing Commas & Missing Brackets"| ParsedCall["Validated Tool Call Schema"]
+        ParsedCall --> LoopBreaker{"LoopBreaker (src/loop-breaker.ts)"}
+        
+        LoopBreaker -->|"Exceeded 3x Repeats"| Intervention["Circuit Breaker Intervention Prompt"]
+        Intervention --> Messages
+    end
+
+    %% Tool Execution
+    subgraph ToolLayer ["6. Tool Execution Engine"]
+        LoopBreaker -->|"Safe to Execute"| ToolRegistry["Tool Dispatcher"]
+        ToolRegistry --> ReadFile["read_file (Local Disk)"]
+        ToolRegistry --> WriteFile["write_file (Surgical Patch)"]
+        
+        ReadFile -->|"Tool Result / Observation"| Observation["Observation Formatter"]
+        WriteFile -->|"Tool Result / Observation"| Observation
+        Observation --> Messages
+    end
+
+    %% Feedback Loop
+    Messages -->|"Next Turn Check (Finished?)"| Engine
 ```
 
 ---
